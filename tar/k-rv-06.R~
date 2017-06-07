@@ -1,0 +1,131 @@
+library(qgraph)
+library(lars)
+library(Matrix)
+library(glmnet)
+
+#lasso <- function(x, y, rowPivot, gamma) {
+lasso <- function(x, y, rowPivot) {
+  n = nrow(x)
+  p = ncol(x)
+  
+  beta = matrix(nrow = p, ncol = 1)
+  k = matrix(nrow = n, ncol = 1)
+  sigma = p / 30
+  for (i in 1:p) {
+    beta[i] = 1
+  }
+  
+  for (i in 1:n) {
+    k[i] = sqrt(exp(-((i - rowPivot) / (2 * sigma)) ^ 2) / sqrt(2 * pi * sigma^2))
+  }
+  
+  
+  r = 1
+  iter = 1
+  maxIter = 100
+  tol = 1e-5
+  gamma = 7e-5
+  pi = 3.1415926
+  
+  tmp = ((y - x %*% beta) * k)
+  
+  f = 0.5 * sum( ((y - x %*% beta) * k) * ((y - x %*% beta) * k)) + gamma * sum(abs(beta))
+  while (iter < maxIter && r > tol) {
+    for (j in 1:p) {
+      beta_hat = 0
+      for (i in 1:n) {
+        y_tudor = x[i,] %*% beta - x[i,j] * beta[j]
+        
+        beta_hat = beta_hat + (x[i, j] * (y[i] - y_tudor)) * k[i]
+      }
+      
+      if (is.na(beta_hat))
+      {
+        i = 0
+      }
+      if (beta_hat > 0 && gamma < abs(beta_hat)) {
+        beta[j] = beta_hat - gamma
+      }
+      else if (beta_hat < 0 && gamma < abs(beta_hat)) {
+        beta[j] = beta_hat + gamma
+      }
+      else {
+        beta[j] = 0
+      }
+    }
+    f_new = 0.5 * sum( ((y - x %*% beta) * k) * ((y - x %*% beta) * k)) + gamma * sum(abs(beta))
+    r = abs(f_new -f )
+    f = f_new
+    iter = iter + 1
+  }
+  return(beta)
+}
+
+tickerLabels=read.table(file="./tickers",header=FALSE,sep = ",", quote = "", dec = ".", fill = TRUE, comment.char = "")
+tickerLabels=as.vector(tickerLabels)
+tickerLabels = t(tickerLabels)
+
+for (i in 2013:2013) {
+  for (j in 06:06) {
+    m = i * 100 + j
+    filename = paste("./" , as.character(m), "_rv_30min_k", sep="")
+    ret=read.table(file=filename,header=FALSE,sep = " ", quote = "\"", dec = ".", fill = TRUE, comment.char = "")
+    
+    indexes=seq(1, ncol(ret) - 1)
+    ret = ret[, indexes]
+    
+    num_of_cols=ncol(ret)
+    num_of_rows=nrow(ret)
+    M1 = t(as.matrix(ret[,1:(num_of_cols-1)]))
+    M2 = t(as.matrix(ret[,2:num_of_cols]))
+
+    #for (gamma in c(5e-5,5e-6,7e-3,7e-4,7e-5,7e-6,9e-3,9e-4,9e-5,9e-6)) {
+    #for (gamma in c(1e-3,1e-4,1e-5,1e-6,3e-3,3e-4,3e-5,3e-6,5e-3,5e-4,5e-5,5e-6,7e-3,7e-4,7e-5,7e-6,9e-3,9e-4,9e-5,9e-6)) {
+    for (rowPivot in 25:(num_of_cols )) {
+      A = matrix(nrow = num_of_rows, ncol = num_of_rows)
+      for (jj in 1:num_of_rows){
+          #A[,jj] = lasso(M1, M2[,jj], rowPivot, gamma)
+          A[,jj] = lasso(M1, M2[,jj], rowPivot)
+          print(rowPivot)
+          print(jj)
+          #print(gamma)
+      }
+      
+     
+      outputFileName = paste("~/Desktop/", as.character(m), "_kernel_rv_plot/", as.character(m), "_", as.character(rowPivot), ".jpg", sep="")
+      graphName = paste(as.character(m), "_", as.character(rowPivot),sep="")
+
+
+      jpeg(outputFileName, width=1500, height=1500)
+      qgraph(A, minimum=3e-5,directed=TRUE,layout="circular", legend = FALSE, width=40, height=40,node.width=1, labels=tickerLabels)
+      title(graphName, line = -5, cex.main=5)
+      dev.off()
+      outputmatrixname = paste("~/Desktop/", as.character(m), "_kernel_rv_matrix/", as.character(m), "_", as.character(rowPivot), ".txt", sep="")
+      #outputmatrixname = paste("~/Desktop/", as.character(m), "_", as.character(rowPivot), "_", as.character(gamma),".txt", sep="")
+
+
+      write.table(A, file=outputmatrixname, row.names=FALSE, col.names=FALSE)
+
+
+###plot max eigenvector
+
+outputFileName = paste("~/Desktop/", as.character(m), "_kernel_maxEigenvec_rv_plot/", as.character(m), "_", as.character(rowPivot), ".jpg", sep="")
+graphName = paste(as.character(m), "_", as.character(rowPivot),sep="")
+jpeg(outputFileName, width=1500, height=1500)
+
+	eig = eigen(A)
+	max_eigenvec = eig$vectors[eig$values == max(eig$values)]
+	numcreat = seq(1, length(A), by=1)
+	par(las=2)##rotate lable
+	plot(max_eigenvec,xlab="ticker",ylab="max_eigenvector",ylim=c(0,1), xaxt="n")
+	axis(1, at=1:num_of_rows, labels=tickerLabels,cex.axis=0.4)#cex:lable size
+	
+	
+title(graphName, line = -5, cex.main=5)
+      dev.off()
+
+
+    }
+  #}
+  }
+}
